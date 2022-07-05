@@ -172,7 +172,9 @@ mod test {
             match symbols {
                 Some(_) => {
                     for symb in symbols.unwrap().drain() {
-                        // TODO(baolean): other variable types
+                        // Each symbol used in the query needs to be declared first
+                        // These correspond to initial values of symbolic variables
+                        // TODO(baolean): variable types beyond Int
                         let var_decl = format!("(declare-fun {} () Int) ", symb);
                         declarations.push_str(var_decl.as_str())        
                     }
@@ -193,8 +195,6 @@ mod test {
 
         let query = String::from("(declare-fun x () Int) (declare-fun y () Int) (assert (>= (+ x y) 15))");
         assert_eq!(result, query);
-
-
     }
 
 }

@@ -59,6 +59,34 @@ pub enum UnaryOp {
 impl SMTLibTranslatable for Sentence {
     fn to_smt2(&self) -> (String, Option<HashSet<String>>) {
         match self {
+            Sentence::Basic(v) => {
+                match v {
+                    Value::Concrete(_) => {
+                        let val: String = v.as_concrete()
+                                            .and_then(|v| v.as_number())
+                                            .and_then(|v| v.as_u64())
+                                            .unwrap().to_string();
+                        (val, None)
+                    },
+                    Value::Symbolic(s) => {
+                        match s {
+                            SSimpleVal::SymbolicBool(symb) => {
+                                let symbol = symb.0.clone();
+                                (symbol.clone(), Some(HashSet::from([symbol])))
+                            },
+                            SSimpleVal::SymbolicNumber(sn) => {
+                                let symbol = sn.0.0.clone();
+                                (symbol.clone(), Some(HashSet::from([symbol])))
+                            },
+                            SSimpleVal::SymbolicVector(sv) => {
+                                // TODO(baolean)
+                                let symbol = sv.0.0.clone();
+                                (symbol.clone(), Some(HashSet::from([symbol])))
+                            }
+                        }
+                    }
+                }
+            },
             Sentence::UnaryOp { a, op } => {
                 match op {
                     UnaryOp::Not => {
@@ -77,19 +105,19 @@ impl SMTLibTranslatable for Sentence {
             Self::BinOp { a, b, op } => {
                 let operator = match op {
                     BinOp::Eq => "=",
-                    BinOp::Gt => ">",
-                    BinOp::Gte => ">=",
+                    BinOp::Gt => ">", // signed version; unsigned is 'UGT';
+                    BinOp::Gte => ">=", // unsigned is 'UGE', etc.
                     BinOp::Lt => "<",
                     BinOp::Lte => "<=",
                     BinOp::Minus => "-",
                     BinOp::Mod => "mod",
                     BinOp::Mul => "*",
                     BinOp::Plus => "+",
-                    _ => "", // TODO!
+                    _ => "", // TODO(baolean): complete the set of operators
+                    // The following bitwise operators can only be applied to bitvectors
                     // BinOp::BitAnd => "bvand",
                     // BinOp::BitOr => "bvor",
                     // BinOp::BitXor => "bvxor",
-                    // BinOp::Div => "div", // Signed division; unsigned version: bvudiv
                 };
 
                 let (expr_1, symbols_1) = a.inner().to_smt2();
@@ -112,36 +140,8 @@ impl SMTLibTranslatable for Sentence {
                 (smtlib, Some(decl_symbols))
             },
             Self::TernaryOp { a, b, c, op } => {
-                // TODO
+                // TODO(baolean)
                 (String::new(), None)
-            },
-            Sentence::Basic(v) => {
-                match v {
-                    Value::Concrete(_) => {
-                        let val: String = v.as_concrete()
-                                            .and_then(|v| v.as_number())
-                                            .and_then(|v| v.as_u64())
-                                            .unwrap().to_string();
-                        (val, None)
-                    },
-                    Value::Symbolic(s) => {
-                        match s {
-                            SSimpleVal::SymbolicBool(symb) => {
-                                let symbol = symb.0.clone();
-                                (symbol.clone(), Some(HashSet::from([symbol])))
-                            },
-                            SSimpleVal::SymbolicNumber(sn) => {
-                                let symbol = sn.0.0.clone();
-                                (symbol.clone(), Some(HashSet::from([symbol])))
-                            },
-                            SSimpleVal::SymbolicVector(sv) => {
-                                // TODO
-                                let symbol = sv.0.0.clone();
-                                (symbol.clone(), Some(HashSet::from([symbol])))
-                            }
-                        }
-                    }
-                }
             },
         }
     }
