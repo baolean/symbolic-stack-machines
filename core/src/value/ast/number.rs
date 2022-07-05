@@ -117,7 +117,8 @@ impl std::ops::Div for CNumber {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SNumber(SymbolId<CNumber>);
+// SymbolId needs to be visible during the smtlib2 translation
+pub struct SNumber(pub SymbolId<CNumber>);
 #[derive(Clone, Debug, PartialEq, Eq, EnumAsInner)]
 pub enum Number {
     Sym(SNumber),
