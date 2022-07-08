@@ -4,7 +4,9 @@ pub mod base_interpreter;
 mod test {
     use super::base_interpreter::*;
     use crate::value::{ast::*, SMTLibTranslatable};
-
+    use z3_sys::*;
+    use std::ffi::{CStr, CString};
+    
     #[test]
     fn test_add_pgm() {
         let five = Sentence::Basic(Value::Concrete(CSimpleVal::Number(CNumber::U64(5_u64))));
@@ -193,8 +195,34 @@ mod test {
 
         let result = interpreter.interpret(Box::new(pre_hook), Box::new(post_hook), final_hook);
 
-        let query = String::from("(declare-fun x () Int) (declare-fun y () Int) (assert (>= (+ x y) 15))");
+        let query = String::from("(declare-fun y () Int) (declare-fun x () Int) (assert (>= (+ x y) 15))");
         assert_eq!(result, query);
+
+        // Solving a generated smtlib query using Z3 low-level bindings
+        unsafe {
+            let cfg = Z3_mk_config();
+            let ctx = Z3_mk_context(cfg);
+    
+            let solver = Z3_mk_simple_solver(ctx);
+    
+            let assertion: CString = CString::new(result).unwrap();
+    
+            Z3_solver_from_string(ctx, solver, assertion.as_ptr());
+    
+            assert_eq!(Z3_solver_check(ctx, solver), Z3_L_TRUE);
+    
+            let model = Z3_solver_get_model(ctx, solver);
+            let model_s = Z3_model_to_string(ctx, model);
+    
+            let model_str = CStr::from_ptr(model_s).to_str().unwrap();
+            // "x -> 0 \n y -> 15"
+    
+            let model_elements = model_str.split_terminator('\n').collect::<Vec<_>>();
+
+            assert_eq!(model_elements.len(), 2);
+            assert!(model_elements.contains(&"y -> 15"));
+            assert!(model_elements.contains(&"x -> 0"));
+        }
     }
 
 }
