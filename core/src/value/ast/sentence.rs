@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use crate::value::SMTLibTranslatable;
 use super::*;
 
@@ -48,6 +48,9 @@ pub enum BinOp {
     BitXor,
     LShift,
     RShift,
+    // Logical Ops
+    And,
+    Or
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -57,7 +60,7 @@ pub enum UnaryOp {
 }
 
 impl SMTLibTranslatable for Sentence {
-    fn to_smt2(&self) -> (String, Option<HashSet<String>>) {
+    fn to_smt2(&self) -> (String, Option<HashMap<String, String>>) {
         match self {
             Sentence::Basic(v) => {
                 match v {
@@ -72,16 +75,23 @@ impl SMTLibTranslatable for Sentence {
                         match s {
                             SSimpleVal::SymbolicBool(symb) => {
                                 let symbol = symb.0.clone();
-                                (symbol.clone(), Some(HashSet::from([symbol])))
+                                println!("Symbolic bool: {}", symbol);
+                                (symbol.clone(), Some(HashMap::from([(symbol, "Bool".to_string())])))
                             },
                             SSimpleVal::SymbolicNumber(sn) => {
                                 let symbol = sn.0.0.clone();
-                                (symbol.clone(), Some(HashSet::from([symbol])))
+                                let sort = "Int".to_string();
+                                // TODO(baolean): a number can probably be an Int or a BV of different sizes
+                                (symbol.clone(), Some(HashMap::from([(symbol, sort)])))
                             },
                             SSimpleVal::SymbolicVector(sv) => {
-                                // TODO(baolean)
                                 let symbol = sv.0.0.clone();
-                                (symbol.clone(), Some(HashSet::from([symbol])))
+                                /* TODO(baolean): this can also be an Array
+                                   Arrays in Z3 are used to model unbounded or very large arrays.
+                                   Arrays should not be used to model small finite collections of values
+                                   We should also infer the type of elements and the size of the vector
+                                */
+                                (symbol.clone(), Some(HashMap::from([(symbol, "IntVector".to_string())])))
                             }
                         }
                     }
@@ -113,6 +123,8 @@ impl SMTLibTranslatable for Sentence {
                     BinOp::Mod => "mod",
                     BinOp::Mul => "*",
                     BinOp::Plus => "+",
+                    BinOp::And => "and",
+                    BinOp::Or => "or",
                     _ => "", // TODO(baolean): complete the set of operators
                     // The following bitwise operators can only be applied to bitvectors
                     // BinOp::BitAnd => "bvand",
@@ -125,7 +137,7 @@ impl SMTLibTranslatable for Sentence {
 
                 let mut decl_symbols = match symbols_1 {
                     Some(_) => symbols_1.unwrap(),
-                    None => HashSet::new(),
+                    None => HashMap::new(),
                 };
 
                 decl_symbols = match symbols_2 {

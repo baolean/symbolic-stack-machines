@@ -102,6 +102,8 @@ mod test {
         let five = Sentence::Basic(Value::Concrete(CSimpleVal::Number(CNumber::U64(5_u64))));
         let ten = Sentence::Basic(Value::Concrete(CSimpleVal::Number(CNumber::U64(10_u64))));
 
+        let twelve = Sentence::Basic(Value::Concrete(CSimpleVal::Number(CNumber::U64(12_u64))));
+
         let add_x_y = Sentence::BinOp {
             a: Val::new(symb_x.clone()),
             b: Val::new(symb_y),
@@ -114,10 +116,22 @@ mod test {
             op: BinOp::Plus,
         };
 
-        let pgm = Sentence::BinOp {
+        let x_greater_than_twelve = Sentence::BinOp {
+            a: Val::new(symb_x.clone()),
+            b: Val::new(twelve),
+            op: BinOp::Gt,
+        };
+
+        let sum_greater_than_fifteen = Sentence::BinOp {
             a: Val::new(add_x_y),
             b: Val::new(add_five_ten),
             op: BinOp::Gte,
+        };
+
+        let pgm = Sentence::BinOp {
+            a: Val::new(sum_greater_than_fifteen),
+            b: Val::new(x_greater_than_twelve),
+            op: BinOp::And,
         };
 
         // Post hook to collapse binary addition between two literals
@@ -176,8 +190,7 @@ mod test {
                     for symb in symbols.unwrap().drain() {
                         // Each symbol used in the query needs to be declared first
                         // These correspond to initial values of symbolic variables
-                        // TODO(baolean): variable types beyond Int
-                        let var_decl = format!("(declare-fun {} () Int) ", symb);
+                        let var_decl = format!("(declare-fun {} () {}) ", symb.0, symb.1);
                         declarations.push_str(var_decl.as_str())        
                     }
 
@@ -195,7 +208,9 @@ mod test {
 
         let result = interpreter.interpret(Box::new(pre_hook), Box::new(post_hook), final_hook);
 
-        let query = String::from("(declare-fun y () Int) (declare-fun x () Int) (assert (>= (+ x y) 15))");
+        let query = String::from("(declare-fun x () Int) (declare-fun y () Int) (assert (and (>= (+ x y) 15) (> x 12)))");
+        // The order of x, y declaration is not deterministic, so this assertion might fail
+        // if x is declared after y in the generated query
         assert_eq!(result, query);
 
         // Solving a generated smtlib query using Z3 low-level bindings
@@ -205,7 +220,8 @@ mod test {
     
             let solver = Z3_mk_simple_solver(ctx);
     
-            let assertion: CString = CString::new(result).unwrap();
+            // let assertion: CString = CString::new(result).unwrap();
+            let assertion: CString = CString::new(query).unwrap();
     
             Z3_solver_from_string(ctx, solver, assertion.as_ptr());
     
@@ -216,12 +232,13 @@ mod test {
     
             let model_str = CStr::from_ptr(model_s).to_str().unwrap();
             // "x -> 0 \n y -> 15"
+            println!("{}", model_str.to_string());
     
             let model_elements = model_str.split_terminator('\n').collect::<Vec<_>>();
 
             assert_eq!(model_elements.len(), 2);
-            assert!(model_elements.contains(&"y -> 15"));
-            assert!(model_elements.contains(&"x -> 0"));
+            assert!(model_elements.contains(&"y -> 2"));
+            assert!(model_elements.contains(&"x -> 13")); // x > 12 && (x + y) >= 15 
         }
     }
 
