@@ -65,31 +65,32 @@ impl SMTLibTranslatable for Sentence {
             Sentence::Basic(v) => {
                 match v {
                     Value::Concrete(_) => {
-                        let val: String = v.as_concrete()
+                        let int_val: String = v.as_concrete()
                                             .and_then(|v| v.as_number())
                                             .and_then(|v| v.as_u64())
                                             .unwrap().to_string();
-                        (val, None)
+                        // Translating an unsigned int to a bitvector (of size 64)
+                        let bv_val = format!("(_ bv{} 64)", int_val);
+                        (bv_val, None)
                     },
                     Value::Symbolic(s) => {
                         match s {
                             SSimpleVal::SymbolicBool(symb) => {
                                 let symbol = symb.0.clone();
-                                println!("Symbolic bool: {}", symbol);
                                 (symbol.clone(), Some(HashMap::from([(symbol, "Bool".to_string())])))
                             },
                             SSimpleVal::SymbolicNumber(sn) => {
                                 let symbol = sn.0.0.clone();
-                                let sort = "Int".to_string();
+                                let sort = "(_ BitVec 64)".to_string();
                                 // TODO(baolean): a number can probably be an Int or a BV of different sizes
                                 (symbol.clone(), Some(HashMap::from([(symbol, sort)])))
                             },
                             SSimpleVal::SymbolicVector(sv) => {
                                 let symbol = sv.0.0.clone();
-                                /* TODO(baolean): this can also be an Array
-                                   Arrays in Z3 are used to model unbounded or very large arrays.
+                                /* TODO(baolean): this can also be an Array; it's probably an Array of BitVectors
+                                    We should infer the type of elements and the size of the vector
+                                   Also, arrays in Z3 are used to model unbounded or very large arrays.
                                    Arrays should not be used to model small finite collections of values
-                                   We should also infer the type of elements and the size of the vector
                                 */
                                 (symbol.clone(), Some(HashMap::from([(symbol, "IntVector".to_string())])))
                             }
@@ -115,14 +116,15 @@ impl SMTLibTranslatable for Sentence {
             Self::BinOp { a, b, op } => {
                 let operator = match op {
                     BinOp::Eq => "=",
-                    BinOp::Gt => ">", // signed version; unsigned is 'UGT';
-                    BinOp::Gte => ">=", // unsigned is 'UGE', etc.
-                    BinOp::Lt => "<",
-                    BinOp::Lte => "<=",
-                    BinOp::Minus => "-",
-                    BinOp::Mod => "mod",
-                    BinOp::Mul => "*",
-                    BinOp::Plus => "+",
+                    BinOp::Gt => "bvugt", // signed is ">"
+                    BinOp::Gte => "bvuge", // signed is ">="
+                    BinOp::Lt => "bvult", // signed is "<"
+                    BinOp::Lte => "bvule", // signed is "<="
+                    BinOp::Minus => "bvsub", // operator for Ints is "-"
+                    BinOp::Plus => "bvadd", // operator for Ints is "+"
+                    // TODO(baolean): check if those can be used with BV
+                    BinOp::Mod => "mod", 
+                    BinOp::Mul => "mul",
                     BinOp::And => "and",
                     BinOp::Or => "or",
                     _ => "", // TODO(baolean): complete the set of operators

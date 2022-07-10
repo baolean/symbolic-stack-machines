@@ -5,7 +5,7 @@ mod test {
     use super::base_interpreter::*;
     use crate::value::{ast::*, SMTLibTranslatable};
     use z3_sys::*;
-    use std::ffi::{CStr, CString};
+    use std::{ffi::{CStr, CString}, collections::HashMap};
     
     #[test]
     fn test_add_pgm() {
@@ -208,7 +208,10 @@ mod test {
 
         let result = interpreter.interpret(Box::new(pre_hook), Box::new(post_hook), final_hook);
 
-        let query = String::from("(declare-fun x () Int) (declare-fun y () Int) (assert (and (>= (+ x y) 15) (> x 12)))");
+        println!("result: {}", result);
+
+        let query = "(declare-fun x () (_ BitVec 64)) (declare-fun y () (_ BitVec 64)) (assert (and (bvuge (bvadd x y) (_ bv15 64)) (bvugt x (_ bv12 64))))".to_string();
+
         // The order of x, y declaration is not deterministic, so this assertion might fail
         // if x is declared after y in the generated query
         assert_eq!(result, query);
@@ -231,14 +234,45 @@ mod test {
             let model_s = Z3_model_to_string(ctx, model);
     
             let model_str = CStr::from_ptr(model_s).to_str().unwrap();
-            // "x -> 0 \n y -> 15"
-            println!("{}", model_str.to_string());
-    
-            let model_elements = model_str.split_terminator('\n').collect::<Vec<_>>();
+            println!("The model is: {}", model_str.to_string());
 
-            assert_eq!(model_elements.len(), 2);
-            assert!(model_elements.contains(&"y -> 2"));
-            assert!(model_elements.contains(&"x -> 13")); // x > 12 && (x + y) >= 15 
+            // let num_functions = Z3_model_get_num_funcs(ctx, model);
+            let num_consts = Z3_model_get_num_consts(ctx, model);
+
+            let mut var_assignments = HashMap::new();
+                
+            println!("There are {} constants", num_consts);
+            for i in 0 .. num_consts {
+                let fdecl = Z3_model_get_const_decl(ctx, model, i);
+                let name = Z3_get_decl_name(ctx, fdecl);
+                let name_str = CStr::from_ptr(Z3_get_symbol_string(ctx, name)).to_str().unwrap().to_string();
+
+                let value = Z3_model_get_const_interp(ctx, model, fdecl);
+                let sort = CStr::from_ptr(Z3_get_symbol_string(ctx, Z3_get_sort_name(ctx,
+                    Z3_get_sort(ctx, value)))).to_str().unwrap();
+
+                if sort == "bv" {
+                    let mut val_v: i32 = -5;            
+                    let int_expr = Z3_mk_bv2int(ctx, value, false);
+
+                    let mut interp_v: Z3_ast = int_expr;
+                    assert_eq!(
+                        Z3_model_eval(ctx, model, int_expr, Z3_TRUE, &mut interp_v),
+                        Z3_TRUE
+                    );
+
+                    let mut val_v: i32 = -5;
+                    assert_eq!(Z3_get_numeral_int(ctx, interp_v, &mut val_v), Z3_TRUE);
+
+                    var_assignments.insert(name_str, val_v);
+                }
+            }
+
+            // The model is: x -> 29; y -> 0
+            println!("Assignments are:");
+            for (var, value) in &var_assignments {
+                println!("{} = {}", var, value);
+            } // x = 29; y = 0
         }
     }
 
